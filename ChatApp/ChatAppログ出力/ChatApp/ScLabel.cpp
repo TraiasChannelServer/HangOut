@@ -1,6 +1,7 @@
 #include "ScLabel.h"
 #include "BoundRect.h"
 #include "DxLib.h"
+#include "Logger.h"
 
 ScLabel::ScLabel(const std::string& Text, unsigned int ColorFore, int x, int y, int FontHandle)
 	: m_Text(Text)
@@ -70,6 +71,8 @@ void ScLabel::Draw() const
 
 void ScLabel::ChangeText(const std::string& Text)
 {
+	Logger::Info("ƒ‰ƒxƒ‹–¼‚ğ•ÏXFText = %s ¨ %s", m_Text.c_str(), Text.c_str());
+
 	m_Text = Text;
 	if (m_FitBoundMode)
 		FitBound();

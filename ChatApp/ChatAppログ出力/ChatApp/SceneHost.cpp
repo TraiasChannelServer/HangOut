@@ -465,7 +465,7 @@ void SceneHost::SetName(std::string& Name)
 void SceneHost::SetAcceptGuest(bool& OffOn)
 {
 	// 新規ゲストの受付トグルのコールバック関数
-	Logger::Info("新規ゲストの受付トグル 変更前：%s", OffOn ? "true" : "false");
+	Logger::Info("新規ゲストの受付トグル：%sに変更を試みる", OffOn ? "true" : "false");
 
 	if (m_AcceptGuestStep == AcceptGuestStep::OFF)
 	{
@@ -494,7 +494,7 @@ void SceneHost::SetAcceptGuest(bool& OffOn)
 	else
 		StopListenNetWork();
 
-	Logger::Info("新規ゲストの受付トグル 変更後：%s", OffOn ? "true" : "false");
+	Logger::Info("新規ゲストの受付トグル：%sに変更", OffOn ? "true" : "false");
 }
 
 void SceneHost::AcceptGuest()
