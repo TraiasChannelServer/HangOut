@@ -193,7 +193,7 @@ void SceneHost::ProcessNewGuest()
 			Logger::Info("[AcceptGuestStep::REQUEST_NAME] メッセージを受信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
 				, m_NewGuestNetHandle, Command::TypeToString(msg.type), msg.single.num, msg.string.text);
 
-			if (msg.type == Command::Type::CHANGE_NAME)
+			if (msg.type == Command::Type::CHANGE_NAME_MYSELF)
 			{
 				// 相手が名乗ってきたら
 				// 相手の名前を保持
