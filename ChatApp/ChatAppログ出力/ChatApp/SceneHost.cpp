@@ -239,6 +239,7 @@ void SceneHost::ProcessNewGuest()
 			m_AcceptedGuest->AddItem(m_NewGuestNetHandle, m_NewGuestName->GetText());
 
 			// 全承認済みゲストに新規ゲストの接続を知らせる（新規ゲスト本人を含まない）
+			Logger::Info("[AcceptGuestStep::SELECTED] 全承認済みゲストに新規ゲストの接続を知らせる（新規ゲスト本人を含まない）");
 			auto& list = m_AcceptedGuest->GetItem();
 			for (auto& pair : list)
 			{
@@ -255,6 +256,25 @@ void SceneHost::ProcessNewGuest()
 
 				Logger::Info("[AcceptGuestStep::SELECTED] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
 					, ID, Command::TypeToString(msgSend2.type), msgSend2.single.num, msgSend2.string.text);
+			}
+
+			// 新規ゲストに全承認済みゲストを知らせる（新規ゲスト本人を含まない）
+			Logger::Info("[AcceptGuestStep::SELECTED] 新規ゲストに全承認済みゲストを知らせる（新規ゲスト本人を含まない）");
+			for (auto& pair : list)
+			{
+				int ID = pair.first;
+				Logger::Info("[AcceptGuestStep::SELECTED] ID = %d, Name = %s", ID, pair.second.Text.c_str());
+
+				if (ID == m_NewGuestNetHandle)
+				{
+					Logger::Info("[AcceptGuestStep::SELECTED] 新規ゲスト本人なのでメッセージを送信しない");
+					continue;
+				}
+				Command::Message msgSend2 = Command::MakeNewGuest(ID, pair.second.Text);
+				NetWorkSend(m_NewGuestNetHandle, &msgSend2, Command::SIZEOF_MESSAGE);
+
+				Logger::Info("[AcceptGuestStep::SELECTED] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
+					, m_NewGuestNetHandle, Command::TypeToString(msgSend2.type), msgSend2.single.num, msgSend2.string.text);
 			}
 		}
 		else
