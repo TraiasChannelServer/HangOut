@@ -11,14 +11,23 @@
 class Command
 {
 public:
+	// これを更新したらstatic const char* TypeToString(Type type)も更新すること
 	enum class Type
 	{
 		CONNECT,
 		MESSAGE,
 		CHANGE_NAME_MYSELF,
-		CHANGE_NAME,
+		CHANGE_NAME_GUEST,
 		NEW_GUEST,
 		DISCONNECT_GUEST,
+		ALL_UPDATE,
+	};
+
+	enum class ReceiveResult
+	{
+		NONE,
+		SUCCESS,
+		ABNORMAL
 	};
 
 	union SingleData
@@ -46,9 +55,14 @@ public:
 	static Message MakeConnect(bool AcceptReject, const std::string& Name);
 	static Message MakeMessage(int ID, const std::string& MessageString);
 	static Message MakeChangeNameMySelf(const std::string& Name);
-	static Message MakeChangeName(int ID, const std::string& Name);
+	static Message MakeChangeNameGuest(int ID, const std::string& Name);
 	static Message MakeNewGuest(int ID, const std::string& Name);
 	static Message MakeDisconnectGuest(int ID);
+	static Message MakeAllUpdate();
+
+	static void Send(int NetHandle, const Message& Msg);
+	static ReceiveResult CheckReceive(int NetHandle);
+	static Message Receive(int NetHandle);
 
 	static const char* TypeToString(Type type);
 

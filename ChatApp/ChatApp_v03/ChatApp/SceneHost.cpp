@@ -103,8 +103,8 @@ SceneHost::SceneHost()
 		unsigned int ColorFrame = GetColor(50, 50, 100);
 		unsigned int ColorBackHover = GetColor(200, 200, 240);
 		unsigned int ColorBackPress = GetColor(160, 160, 200);
-		auto CallbackHost = new DelegateVoid<SceneHost>(*this, &SceneHost::AcceptGuest);
-		m_AcceptRejectComponent.push_back(new ScButton("承認", ColorFore, ColorBack, X_START + 10, y, BigFont, ColorFrame, ColorBackHover, ColorBackPress, CallbackHost));
+		auto Callback = new DelegateVoid<SceneHost>(*this, &SceneHost::AcceptGuest);
+		m_AcceptRejectComponent.push_back(new ScButton("承認", ColorFore, ColorBack, X_START + 10, y, BigFont, ColorFrame, ColorBackHover, ColorBackPress, Callback));
 	}
 	{
 		unsigned int ColorFore = BlackColor;
@@ -112,8 +112,8 @@ SceneHost::SceneHost()
 		unsigned int ColorFrame = GetColor(100, 50, 50);
 		unsigned int ColorBackHover = GetColor(240, 200, 200);
 		unsigned int ColorBackPress = GetColor(200, 160, 160);
-		auto CallbackHost = new DelegateVoid<SceneHost>(*this, &SceneHost::RejectGuest);
-		m_AcceptRejectComponent.push_back(new ScButton("拒否", ColorFore, ColorBack, X_START + 110, y, BigFont, ColorFrame, ColorBackHover, ColorBackPress, CallbackHost));
+		auto Callback = new DelegateVoid<SceneHost>(*this, &SceneHost::RejectGuest);
+		m_AcceptRejectComponent.push_back(new ScButton("拒否", ColorFore, ColorBack, X_START + 110, y, BigFont, ColorFrame, ColorBackHover, ColorBackPress, Callback));
 	}
 
 	y += Y_STEP_BIG + Y_STEP_SMALL;
@@ -136,8 +136,8 @@ SceneHost::SceneHost()
 		unsigned int ColorFrame = GetColor(50, 100, 50);
 		unsigned int ColorBackHover = GetColor(200, 240, 200);
 		unsigned int ColorBackPress = GetColor(160, 200, 160);
-		auto CallbackHost = new DelegateVoid<SceneHost>(*this, &SceneHost::End);
-		AddBaseComponent(new ScButton("終了", ColorFore, ColorBack, X_START, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, CallbackHost));
+		auto Callback = new DelegateVoid<SceneHost>(*this, &SceneHost::End);
+		AddBaseComponent(new ScButton("終了", ColorFore, ColorBack, X_START, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, Callback));
 	}
 }
 
@@ -207,6 +207,8 @@ void SceneHost::ProcessNewGuest()
 			if (m_AcceptedGuest->GetItem().size() < ACCEPTED_GUEST_MAX)
 			{
 				// ゲストの接続数が最大数に達していない時
+				Logger::Warn("[AcceptGuestStep::WAIT_CONNECT] ゲストの接続数が最大数に達していないのでAcceptGuestStep::REQUEST_NAMEへ進む");
+
 				// 相手のIPを保持
 				m_NewGuestIP->ChangeText(Common::IP2String(ip));
 				// 処理をAcceptGuestStep::REQUEST_NAMEへ進む
@@ -216,74 +218,68 @@ void SceneHost::ProcessNewGuest()
 			else
 			{
 				// ゲストの接続数が最大数に達していた時
+				Logger::Warn("[AcceptGuestStep::WAIT_CONNECT] ゲストの接続数が最大数に達しているので接続を拒否");
+
 				// 新規接続しようとしているゲストに拒否メッセージを送信（このときホストは名乗らない）
 				Command::Message msgSend = Command::MakeConnect(false, DUMMY_TEXT);
-				NetWorkSend(m_NewGuestNetHandle, &msgSend, Command::SIZEOF_MESSAGE);
-
-				Logger::Info("[AcceptGuestStep::WAIT_CONNECT] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-					, m_NewGuestNetHandle, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+				Command::Send(m_NewGuestNetHandle, msgSend);
 			}
 		}
 		break;
 	case AcceptGuestStep::REQUEST_NAME:
 	{
-		// 接続してきた相手はまず自分の名前を名乗るはずなので
-		// それを待つ
+		// 接続してきた相手はまず自分の名前を名乗るはずなのでそれを待つ
 
 		bool Reject = false;
 
-		int DataLength = GetNetWorkDataLength(m_NewGuestNetHandle);
-		if (DataLength >= Command::SIZEOF_MESSAGE)
+		Command::ReceiveResult result = Command::CheckReceive(m_NewGuestNetHandle);
+		if (result == Command::ReceiveResult::SUCCESS)
 		{
 			// 相手からメッセージが送られてきたら
-			Command::Message msg = {};
-			NetWorkRecv(m_NewGuestNetHandle, &msg, Command::SIZEOF_MESSAGE);
+			Command::Message Msg = Command::Receive(m_NewGuestNetHandle);
 
-			Logger::Info("[AcceptGuestStep::REQUEST_NAME] メッセージを受信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NewGuestNetHandle, Command::TypeToString(msg.type), msg.single.num, msg.string.text);
-
-			if (msg.type == Command::Type::CHANGE_NAME_MYSELF)
+			if (Msg.type == Command::Type::CHANGE_NAME_MYSELF)
 			{
 				// 相手が名乗ってきたら
+				Logger::Warn("[AcceptGuestStep::REQUEST_NAME] 名乗りメッセージであるのでAcceptGuestStep::SELECT_ACCEPT_REJECTへ進む");
+
 				// 相手の名前を保持
-				m_NewGuestName->ChangeText(msg.string.text);
+				m_NewGuestName->ChangeText(Msg.string.text);
 				// 処理をAcceptGuestStep::SELECT_ACCEPT_REJECTへ進む
 				m_AcceptGuestStep = AcceptGuestStep::SELECT_ACCEPT_REJECT;
 			}
 			else
 			{
-				// 相手が意味不明なメッセージを送ってきたら
-				Logger::Warn("[AcceptGuestStep::REQUEST_NAME] 相手が意味不明なメッセージを送ってきた");
+				// 相手が名乗りではないメッセージを送ってきたら
+				Logger::Warn("[AcceptGuestStep::REQUEST_NAME] 名乗りメッセージではない");
 				// 拒否
 				Reject = true;
 			}
 		}
-		else if (DataLength > 0)
+		else if (result == Command::ReceiveResult::NONE)
 		{
-			// メッセージが送られてきたが、固定長より短いとき
-			// メッセージを読み捨てる
-			char Buf[Command::SIZEOF_MESSAGE] = {};
-			NetWorkRecv(m_NewGuestNetHandle, &Buf, DataLength);
-			Logger::Warn("[AcceptGuestStep::REQUEST_NAME] 固定長より短いメッセージが届いたので捨てる：NetHandle = %d", m_NewGuestNetHandle);
-			// 拒否
-			Reject = true;
+			// 何のメッセージも受け取っていないとき
+			if (GetNowCount() - m_RequestNameTimeStart >= REQUEST_NAME_TIMEOUT)
+			{
+				// タイムアウト
+				Logger::Warn("[AcceptGuestStep::REQUEST_NAME] タイムアウト");
+				// 拒否
+				Reject = true;
+			}
 		}
-		else if (GetNowCount() - m_RequestNameTimeStart >= REQUEST_NAME_TIMEOUT)
+		else
 		{
-			// タイムアウト
-			Logger::Warn("[AcceptGuestStep::REQUEST_NAME] タイムアウト");
 			// 拒否
 			Reject = true;
 		}
 
 		if (Reject)
 		{
+			Logger::Warn("[AcceptGuestStep::REQUEST_NAME] 接続を拒否してAcceptGuestStep::WAIT_CONNECTへ戻る");
+
 			// 新規接続しようとしているゲストに拒否メッセージを送信（このときホストは名乗らない）
 			Command::Message msgSend = Command::MakeConnect(false, DUMMY_TEXT);
-			NetWorkSend(m_NewGuestNetHandle, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("[AcceptGuestStep::REQUEST_NAME] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NewGuestNetHandle, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(m_NewGuestNetHandle, msgSend);
 
 			// 処理をAcceptGuestStep::WAIT_CONNECTへ戻る
 			m_AcceptGuestStep = AcceptGuestStep::WAIT_CONNECT;
@@ -304,10 +300,7 @@ void SceneHost::ProcessNewGuest()
 
 			// 承認メッセージを送信（このときホストも名乗り返す）
 			Command::Message msgSend = Command::MakeConnect(true, m_Name);
-			NetWorkSend(m_NewGuestNetHandle, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("[AcceptGuestStep::SELECTED] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NewGuestNetHandle, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(m_NewGuestNetHandle, msgSend);
 
 			// 承認済みゲストに追加
 			m_AcceptedGuest->AddItem(m_NewGuestNetHandle, m_NewGuestName->GetText());
@@ -326,10 +319,7 @@ void SceneHost::ProcessNewGuest()
 					continue;
 				}
 				Command::Message msgSend2 = Command::MakeNewGuest(m_NewGuestNetHandle, m_NewGuestName->GetText());
-				NetWorkSend(ID, &msgSend2, Command::SIZEOF_MESSAGE);
-
-				Logger::Info("[AcceptGuestStep::SELECTED] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-					, ID, Command::TypeToString(msgSend2.type), msgSend2.single.num, msgSend2.string.text);
+				Command::Send(ID, msgSend2);
 			}
 
 			// 新規ゲストに全承認済みゲストを知らせる（新規ゲスト本人を含まない）
@@ -345,10 +335,7 @@ void SceneHost::ProcessNewGuest()
 					continue;
 				}
 				Command::Message msgSend2 = Command::MakeNewGuest(ID, pair.second.Text);
-				NetWorkSend(m_NewGuestNetHandle, &msgSend2, Command::SIZEOF_MESSAGE);
-
-				Logger::Info("[AcceptGuestStep::SELECTED] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-					, m_NewGuestNetHandle, Command::TypeToString(msgSend2.type), msgSend2.single.num, msgSend2.string.text);
+				Command::Send(m_NewGuestNetHandle, msgSend2);
 			}
 		}
 		else
@@ -358,10 +345,7 @@ void SceneHost::ProcessNewGuest()
 
 			// 拒否メッセージを送信（このときホストは名乗らない）
 			Command::Message msgSend = Command::MakeConnect(false, DUMMY_TEXT);
-			NetWorkSend(m_NewGuestNetHandle, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("[AcceptGuestStep::SELECTED] メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NewGuestNetHandle, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(m_NewGuestNetHandle, msgSend);
 		}
 		// 処理をAcceptGuestStep::WAIT_CONNECTへ戻る
 		m_AcceptGuestStep = AcceptGuestStep::WAIT_CONNECT;
@@ -405,11 +389,7 @@ void SceneHost::ProcessDissconectGuest()
 		{
 			int ID = pair.first;
 			Logger::Info("ID = %d, Name = %s", ID, pair.second.Text.c_str());
-
-			NetWorkSend(ID, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, ID, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(ID, msgSend);
 		}
 	}
 }
@@ -421,17 +401,13 @@ void SceneHost::ProcessReceiveCommand()
 	{
 		int ID = pair.first;
 
-		int DataLength = GetNetWorkDataLength(ID);
-		if (DataLength >= Command::SIZEOF_MESSAGE)
+		Command::ReceiveResult result = Command::CheckReceive(m_NewGuestNetHandle);
+		if (result == Command::ReceiveResult::SUCCESS)
 		{
 			// 相手からメッセージが送られてきたら
-			Command::Message msg = {};
-			NetWorkRecv(ID, &msg, Command::SIZEOF_MESSAGE);
+			Command::Message Msg = Command::Receive(m_NewGuestNetHandle);
 
-			Logger::Info("メッセージを受信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, ID, Command::TypeToString(msg.type), msg.single.num, msg.string.text);
-
-			switch (msg.type)
+			switch (Msg.type)
 			{
 			case Command::Type::MESSAGE:
 				// ゲストがチャットを打ったとのこと
@@ -441,25 +417,43 @@ void SceneHost::ProcessReceiveCommand()
 				// ゲストが名前の変更をしたとのこと
 
 				// 届いて来た名前に変更する
-				m_AcceptedGuest->ChangeText(ID, msg.string.text);
+				m_AcceptedGuest->ChangeText(ID, Msg.string.text);
 
 				// 全承認済みゲストに知らせる（名前を変えたゲスト本人を除く）
+				Command::Message msgSend = Command::MakeChangeNameGuest(ID, Msg.string.text);
 				auto& list2 = m_AcceptedGuest->GetItem();
 				for (auto& pair : list2)
 				{
 					int ID2 = pair.first;
-					Logger::Info("ID = %d, Name = %s", ID, pair.second.Text.c_str());
+					Logger::Info("ID = %d, Name = %s", ID2, pair.second.Text.c_str());
 
 					if (ID2 == ID)
 					{
 						Logger::Info("名前を変更したゲスト本人なのでメッセージを送信しない");
 						continue;
 					}
-					Command::Message msgSend = Command::MakeChangeName(ID, msg.string.text);
-					NetWorkSend(ID2, &msgSend, Command::SIZEOF_MESSAGE);
+					Command::Send(ID2, msgSend);
+				}
+			}
+			break;
+			case Command::Type::ALL_UPDATE:
+			{
+				// 全データを更新したいとのこと
 
-					Logger::Info("メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-						, ID2, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+				// 接続中のゲストを全て知らせる
+				auto& list2 = m_AcceptedGuest->GetItem();
+				for (auto& pair : list2)
+				{
+					int ID2 = pair.first;
+					Logger::Info("ID = %d, Name = %s", ID2, pair.second.Text.c_str());
+
+					if (ID2 == ID)
+					{
+						Logger::Info("全データ更新したいゲスト本人なのでメッセージを送信しない");
+						continue;
+					}
+					Command::Message msgSend = Command::MakeNewGuest(ID2, pair.second.Text.c_str());
+					Command::Send(ID, msgSend);
 				}
 			}
 			break;
@@ -467,15 +461,6 @@ void SceneHost::ProcessReceiveCommand()
 				break;
 			}
 
-		}
-		else if (DataLength > 0)
-		{
-			// メッセージが送られてきたが、固定長より短いとき
-			// メッセージを読み捨てる
-			char Buf[Command::SIZEOF_MESSAGE] = {};
-			NetWorkRecv(ID, &Buf, DataLength);
-
-			Logger::Warn("固定長より短いメッセージが届いたので捨てる：NetHandle = %d", ID);
 		}
 	}
 }
@@ -504,10 +489,7 @@ void SceneHost::SetName(std::string& Name)
 			Logger::Info("ID = %d, Name = %s", ID, pair.second.Text.c_str());
 
 			Command::Message msgSend = Command::MakeChangeNameMySelf(m_Name);
-			NetWorkSend(ID, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, ID, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(ID, msgSend);
 		}
 	}
 }
@@ -596,11 +578,7 @@ void SceneHost::Disconnect()
 	{
 		int ID = pair.first;
 		Logger::Info("ID = %d, Name = %s", ID, pair.second.Text.c_str());
-
-		NetWorkSend(ID, &msgSend, Command::SIZEOF_MESSAGE);
-
-		Logger::Info("メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-			, ID, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+		Command::Send(ID, msgSend);
 	}
 	m_AcceptedGuest->RemoveAllItem();
 }

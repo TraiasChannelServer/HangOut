@@ -41,6 +41,7 @@ private:
 	void SetName(std::string& Name);
 	void TryConnect();
 	void Disconnect();
+	void RequestAllUpdate();
 	void End();
 
 private:

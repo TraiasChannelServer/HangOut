@@ -101,8 +101,8 @@ SceneGuest::SceneGuest()
 		unsigned int ColorFrame = GetColor(50, 100, 100);
 		unsigned int ColorBackHover = GetColor(200, 240, 240);
 		unsigned int ColorBackPress = GetColor(160, 200, 200);
-		auto CallbackHost = new DelegateVoid<SceneGuest>(*this, &SceneGuest::TryConnect);
-		AddBaseComponent(new ScButton("接続を試みる", ColorFore, ColorBack, X_START + 10, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, CallbackHost));
+		auto Callback = new DelegateVoid<SceneGuest>(*this, &SceneGuest::TryConnect);
+		AddBaseComponent(new ScButton("接続を試みる", ColorFore, ColorBack, X_START + 10, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, Callback));
 	}
 
 	y += Y_STEP_SMALL * 2;
@@ -136,12 +136,22 @@ SceneGuest::SceneGuest()
 	y = Common::WINDOW_Y_SIZE - Y_STEP_MIDDLE;
 	{
 		unsigned int ColorFore = BlackColor;
+		unsigned int ColorBack = GetColor(220, 220, 180);
+		unsigned int ColorFrame = GetColor(100, 100, 50);
+		unsigned int ColorBackHover = GetColor(240, 240, 200);
+		unsigned int ColorBackPress = GetColor(200, 200, 160);
+		auto Callback = new DelegateVoid<SceneGuest>(*this, &SceneGuest::RequestAllUpdate);
+		AddBaseComponent(new ScButton("全更新リクエスト", ColorFore, ColorBack, X_START + 75, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, Callback));
+	}
+
+	{
+		unsigned int ColorFore = BlackColor;
 		unsigned int ColorBack = GetColor(180, 220, 180);
 		unsigned int ColorFrame = GetColor(50, 100, 50);
 		unsigned int ColorBackHover = GetColor(200, 240, 200);
 		unsigned int ColorBackPress = GetColor(160, 200, 160);
-		auto CallbackHost = new DelegateVoid<SceneGuest>(*this, &SceneGuest::End);
-		AddBaseComponent(new ScButton("終了", ColorFore, ColorBack, X_START, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, CallbackHost));
+		auto Callback = new DelegateVoid<SceneGuest>(*this, &SceneGuest::End);
+		AddBaseComponent(new ScButton("終了", ColorFore, ColorBack, X_START, y, MiddleFont, ColorFrame, ColorBackHover, ColorBackPress, Callback));
 	}
 }
 
@@ -168,30 +178,30 @@ Scene* SceneGuest::Update()
 	{
 		// 自分の名前を送信した後
 		// ホストから承認・拒否メッセージを待つ
-		int DataLength = GetNetWorkDataLength(m_NetHandle);
-		if (DataLength >= Command::SIZEOF_MESSAGE)
+		Command::ReceiveResult result = Command::CheckReceive(m_NetHandle);
+		if (result == Command::ReceiveResult::SUCCESS)
 		{
-			// ホストからメッセージが送られてきたら
-			Command::Message msg = {};
-			NetWorkRecv(m_NetHandle, &msg, Command::SIZEOF_MESSAGE);
+			// メッセージが送られてきたら
+			Command::Message Msg = Command::Receive(m_NetHandle);
 
-			Logger::Info("[ConnectStep::WAIT_ACCEPT] メッセージを受信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NetHandle, Command::TypeToString(msg.type), msg.single.num, msg.string.text);
-
-			if (msg.type == Command::Type::CONNECT)
+			if (Msg.type == Command::Type::CONNECT)
 			{
 				// 承認・拒否メッセージだったとき
-				if (msg.single.flag)
+				if (Msg.single.flag)
 				{
 					// 承認されたとき
+					Logger::Info("[ConnectStep::WAIT_ACCEPT] 承認された");
+
 					// 受け取ったホスト名を保持
-					m_HostName->ChangeText(msg.string.text);
+					m_HostName->ChangeText(Msg.string.text);
 					// 接続段階へ処理を進む
 					m_ConnectStep = ConnectStep::ON;
 				}
 				else
 				{
 					// 拒否されたとき
+					Logger::Info("[ConnectStep::WAIT_ACCEPT] 拒否された");
+
 					// 切断する
 					Disconnect();
 					// 未接続段階へ処理を戻る
@@ -215,21 +225,17 @@ Scene* SceneGuest::Update()
 	{
 		// ホストに承認をもらって接続できているとき
 
-		int DataLength = GetNetWorkDataLength(m_NetHandle);
-		if (DataLength >= Command::SIZEOF_MESSAGE)
+		Command::ReceiveResult result = Command::CheckReceive(m_NetHandle);
+		if (result == Command::ReceiveResult::SUCCESS)
 		{
-			// ホストからメッセージが送られてきたら
-			Command::Message msg = {};
-			NetWorkRecv(m_NetHandle, &msg, Command::SIZEOF_MESSAGE);
+			// メッセージが送られてきたら
+			Command::Message Msg = Command::Receive(m_NetHandle);
 
-			Logger::Info("[ConnectStep::ON] メッセージを受信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NetHandle, Command::TypeToString(msg.type), msg.single.num, msg.string.text);
-
-			switch (msg.type)
+			switch (Msg.type)
 			{
 			case Command::Type::CONNECT:
 			{
-				if (msg.single.flag == false)
+				if (Msg.single.flag == false)
 				{
 					// 切断しましょうメッセージだったとき
 					Disconnect();
@@ -244,10 +250,10 @@ Scene* SceneGuest::Update()
 			case Command::Type::CHANGE_NAME_MYSELF:
 			{
 				// ホストが名前変えましたメッセージだったとき
-				m_HostName->ChangeText(msg.string.text);
+				m_HostName->ChangeText(Msg.string.text);
 			}
 			break;
-			case Command::Type::CHANGE_NAME:
+			case Command::Type::CHANGE_NAME_GUEST:
 			{
 				// 誰かが名前変えましたメッセージだったとき
 				// 接続済みゲストから誰なのかを突き止める
@@ -255,10 +261,10 @@ Scene* SceneGuest::Update()
 				for (auto& pair : list)
 				{
 					int ID = pair.first;
-					if (ID == msg.single.num)
+					if (ID == Msg.single.num)
 					{
 						// 突き止めたら変更を反映する
-						m_ConnectingGuest->ChangeText(ID, msg.string.text);
+						m_ConnectingGuest->ChangeText(ID, Msg.string.text);
 						break;
 					}
 				}
@@ -267,7 +273,7 @@ Scene* SceneGuest::Update()
 			case Command::Type::NEW_GUEST:
 			{
 				// 新規ゲストがやってきましたメッセージだったとき
-				m_ConnectingGuest->AddItem(msg.single.num, msg.string.text);
+				m_ConnectingGuest->AddItem(Msg.single.num, Msg.string.text);
 			}
 			break;
 			case Command::Type::DISCONNECT_GUEST:
@@ -279,7 +285,7 @@ Scene* SceneGuest::Update()
 				for (auto& pair : list)
 				{
 					int ID = pair.first;
-					if (ID == msg.single.num)
+					if (ID == Msg.single.num)
 					{
 						// 突き止めたらリストから削除
 						m_ConnectingGuest->RemoveItem(ID);
@@ -371,10 +377,7 @@ void SceneGuest::SetName(std::string& Name)
 			// ホストに接続しているとき
 			// 名前変更しましたメッセージを送信
 			Command::Message msgSend = Command::MakeChangeNameMySelf(m_Name);
-			NetWorkSend(m_NetHandle, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NetHandle, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(m_NetHandle, msgSend);
 		}
 	}
 }
@@ -401,10 +404,7 @@ void SceneGuest::TryConnect()
 			// 接続成功したらまずは名乗る決まりなので
 			// 自分の名前をホストに送信する
 			Command::Message msgSend = Command::MakeChangeNameMySelf(m_Name);
-			NetWorkSend(m_NetHandle, &msgSend, Command::SIZEOF_MESSAGE);
-
-			Logger::Info("メッセージを送信：NetHandle = %d, msg = {type = %s, single.num = %d, string.text = %s}"
-				, m_NetHandle, Command::TypeToString(msgSend.type), msgSend.single.num, msgSend.string.text);
+			Command::Send(m_NetHandle, msgSend);
 
 			// 承認待ち段階へ処理を進む
 			m_ConnectStep = ConnectStep::WAIT_ACCEPT;
@@ -421,6 +421,23 @@ void SceneGuest::Disconnect()
 	if (m_NetHandle != -1)
 		CloseNetWork(m_NetHandle);
 	m_NetHandle = -1;
+}
+
+void SceneGuest::RequestAllUpdate()
+{
+	Logger::Info("全更新リクエストボタン押下");
+
+	if (m_ConnectStep == ConnectStep::ON)
+	{
+		// ホストに接続しているとき
+
+		// 名前など自身のデータ以外すべて削除する
+		m_ConnectingGuest->RemoveAllItem();
+
+		// 更新リクエストを送信
+		Command::Message msgSend = Command::MakeAllUpdate();
+		Command::Send(m_NetHandle, msgSend);
+	}
 }
 
 void SceneGuest::End()

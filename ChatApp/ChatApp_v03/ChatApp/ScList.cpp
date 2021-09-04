@@ -79,6 +79,7 @@ void ScList::RemoveItem(int ID)
 
 void ScList::RemoveAllItem()
 {
+	Logger::Info("リストから全アイテムを削除");
 	m_Item.clear();
 	Alignment();
 }
