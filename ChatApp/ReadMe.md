@@ -25,4 +25,4 @@
 - 全情報リクエストメッセージの送受信
 - 出力ファイルの階層変更
   - ログ→./Data/Logs/Log_*.txt
-  - 設定→./Data/Sttring.dat
+  - 設定→./Data/Setting.dat
