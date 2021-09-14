@@ -1,0 +1,30 @@
+https://github.com/sakura-editor/sakura/wiki/50.CodingTips
+
+50.CodingTips
+Kobayashi edited this page on 12 Jul 2018 · 4 revisions
+コメント部末尾に多バイト文字を置くと危ない
+概要
+以下のようにコメント末尾に多バイト文字を置くと、改行が認識されずに次の行までコメント扱いになってしまうことがある。
+
+// コメント例
+printf("hello\n");
+対策
+以下のいずれかで対策する。
+
+対策その1: コメント末尾に多バイト文字を置かない
+対策その2: ファイルエンコーディングをぜんぶ Unicode にする
+実際に起こった例
+Git情報がなくてもビルドできるようにする (Close #148) #191
+
+version.h … こちらのエンコーディングはUTF-8。
+sakura_rc.rc … こちらはSJIS。version.h をインクルードしている。
+version.h 内には以下のような記述があった。
+
+// e.g. "2.3.2.0 UNICODE 64bit" … Git 情報無い場合の例
+#define RESOURCE_VERSION_STRING(_VersionString) ........
+このとき、例\r\n もしくは 例\n が文字コードの組み合わせにより正しく改行があるとみなされず、以下のようなヘッダ記述であるように誤認識されていた。
+
+// e.g. "2.3.2.0 UNICODE 64bit" … Git 情報無い場合の例 #define RESOURCE_VERSION_STRING(_VersionString) ........
+結果、マクロ RESOURCE_VERSION_STRING は sakura_rc.rc から認識できない。
+
+対策として、該当コメント行の末尾に ASCII 文字である // を埋め込むことで問題は解決した。
